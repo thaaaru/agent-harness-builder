@@ -226,12 +226,15 @@ def _readme(cfg: AgentConfig) -> str:
 
 - Provider: `{p.type}` · Model: `{p.model}`{f" · Base URL: `{p.base_url}`" if p.base_url else ""}
 - Tools: {tools}
-- File and shell tools are confined to `{cfg.workspace}`
+- Workspace: `{cfg.workspace}`. File tools can't leave it; `bash`, `http_get` and custom
+  tools are not sandboxed and run with your user's permissions.
 {"".join(f"- Harness: {f}" + chr(10) for f in features)}
 ## Run
 
+Requires Python 3.10 or newer.
+
 ```bash
-python -m venv .venv && source .venv/bin/activate
+python3 -m venv .venv && source .venv/bin/activate   # Windows: py -m venv .venv; .venv\\Scripts\\Activate.ps1
 pip install -r requirements.txt
 {auth}
 python run.py                     # interactive chat

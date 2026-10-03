@@ -1,6 +1,6 @@
 # Extending the harness
 
-The runtime in `harness/` is small on purpose (about 800 lines). There are four extension
+The runtime in `harness/` is small on purpose (about 900 lines). There are four extension
 points, from least to most code:
 
 | You want to… | Use | Code needed |

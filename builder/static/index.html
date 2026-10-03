@@ -35,7 +35,7 @@ section:last-child { border-right: none; }
 h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 10px; font-weight: 600; }
 h3 { font-size: 13px; margin: 0 0 8px; }
 button, select, input, textarea { font: inherit; color: inherit; }
-button { border: 1px solid var(--border); background: var(--panel); border-radius: 7px; padding: 6px 12px; cursor: pointer; }
+button { border: 1px solid var(--border); background: var(--panel); border-radius: 7px; padding: 6px 12px; cursor: pointer; white-space: nowrap; }
 button:hover { background: var(--panel-2); }
 button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
 button.primary:hover { filter: brightness(1.05); }
@@ -198,7 +198,7 @@ pre { background: var(--code); border-radius: 6px; padding: 8px; margin: 4px 0; 
 
       <div class="card">
         <h3>Built-in tools</h3>
-        <p class="hint" style="margin:-4px 0 10px">File and shell tools are confined to the agent's workspace folder. <b>bash</b> is not sandboxed.</p>
+        <p class="hint" style="margin:-4px 0 10px">File tools can't leave the agent's workspace folder. <b>bash</b> and <b>http_get</b> are not sandboxed and run with your permissions.</p>
         <div class="toolgrid" id="builtinTools"></div>
       </div>
 

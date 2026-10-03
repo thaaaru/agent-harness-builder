@@ -71,7 +71,7 @@ class AgentConfig(BaseModel):
     custom_tools: list[CustomTool] = Field(default_factory=list)
     max_turns: int = Field(default=25, ge=1, le=500)
     harness: HarnessConfig = Field(default_factory=HarnessConfig)
-    # Directory that file and shell tools are confined to.
+    # Agent working directory: file tools are confined to it; bash starts in it but is not confined.
     workspace: str = "./workspace"
 
     @field_validator("name")

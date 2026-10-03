@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "agent-harness-builder"
-version = "0.2.0"
+version = "0.1.0"
 description = "Web UI to design, test and export AI agents with a small, provider-pluggable Python harness"
 readme = "README.md"
 license = "MIT"
@@ -20,7 +20,13 @@ dependencies = [
 ]
 keywords = ["ai", "agents", "llm", "claude", "harness", "tool-use"]
 classifiers = [
+    "Development Status :: 3 - Alpha",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Operating System :: OS Independent",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
