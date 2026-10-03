@@ -21,6 +21,7 @@ TEMPLATES = [
                 "or tests to verify your work. Summarise what you changed when you finish."
             ),
             "tools": ["list_files", "read_file", "write_file", "edit_file", "bash"],
+            "harness": {"require_approval": ["bash"], "log_dir": "./logs"},
         },
     },
     {
@@ -66,3 +67,21 @@ TEMPLATES = [
         },
     },
 ]
+
+HOOKS_EXAMPLE = '''# Any of these functions are optional. They may also be `async def`.
+
+def before_tool(call):
+    """Return a string to block the call; the string is shown to the model as the reason."""
+    if call["name"] == "bash" and "rm -rf" in call["input"].get("command", ""):
+        return "destructive commands are not allowed"
+
+
+def after_tool(call, result):
+    """Return a string to replace the tool's output, or None to keep it."""
+    return None
+
+
+def on_event(event):
+    """Called for every event: text, tool_call, tool_result, usage, error, done, ..."""
+    pass
+'''

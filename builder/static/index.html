@@ -104,6 +104,16 @@ pre { background: var(--code); border-radius: 6px; padding: 8px; margin: 4px 0; 
 .notice { text-align: center; color: var(--muted); font-size: 12px; margin: 8px 0 16px; }
 #composer { display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--border); background: var(--panel); }
 #composer textarea { min-height: 42px; max-height: 160px; }
+.approval { border: 1px solid color-mix(in srgb, var(--accent) 50%, transparent); background: color-mix(in srgb, var(--accent) 7%, transparent); border-radius: 8px; padding: 8px 10px; margin: 6px 0; font-size: 13px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.approval b { font-family: var(--mono); }
+.approval .grow { flex: 1; min-width: 120px; }
+.chk { display: flex; gap: 8px; align-items: center; font-size: 13px; margin-bottom: 10px; }
+.chk input { accent-color: var(--accent); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.chips label { display: flex; gap: 6px; align-items: center; border: 1px solid var(--border); border-radius: 999px; padding: 3px 10px; font: 12px var(--mono); cursor: pointer; }
+.chips label:has(input:checked) { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.chips input { accent-color: var(--accent); margin: 0; }
+.sub { border-top: 1px solid var(--border); margin: 6px 0 12px; }
 .welcome { color: var(--muted); text-align: center; margin-top: 18vh; padding: 0 20px; }
 .welcome b { color: var(--text); display: block; font-size: 15px; margin-bottom: 4px; }
 
@@ -200,6 +210,39 @@ pre { background: var(--code); border-radius: 6px; padding: 8px; margin: 4px 0; 
         <p class="hint" style="margin:0 0 10px">Write a Python function <code>run(args)</code> that returns a string. <code>args</code> follows your JSON schema.</p>
         <div id="customTools"></div>
       </div>
+
+      <div class="card">
+        <h3>Harness</h3>
+        <p class="hint" style="margin:-4px 0 10px">How the agent loop behaves: safety gates, limits, context and logging.</p>
+        <span style="display:block;font-size:12.5px;font-weight:550;margin-bottom:6px">Ask before running <span class="hint">· a human approves each call</span></span>
+        <div class="chips" id="approvalChips"></div>
+        <div class="row">
+          <label class="field"><span>Tool timeout <span class="hint">seconds</span></span>
+            <input type="number" id="h_timeout" min="1" max="3600"></label>
+          <label class="field"><span>Token budget <span class="hint">per message, blank = none</span></span>
+            <input type="number" id="h_budget" min="1000" step="1000" placeholder="e.g. 200000"></label>
+        </div>
+        <div class="row">
+          <label class="field"><span>API retries <span class="hint">rate limits, 5xx</span></span>
+            <input type="number" id="h_retries" min="0" max="10"></label>
+          <label class="field"><span>&nbsp;</span>
+            <label class="chk" style="margin:6px 0 0"><input type="checkbox" id="h_log"> Log JSONL transcripts to <code>./logs</code></label></label>
+        </div>
+        <div class="sub"></div>
+        <label class="chk"><input type="checkbox" id="h_clear"> Clear old tool results when the context gets large</label>
+        <div class="row" id="clearOpts">
+          <label class="field"><span>Start clearing above <span class="hint">input tokens</span></span>
+            <input type="number" id="h_trigger" min="1000" step="1000"></label>
+          <label class="field"><span>Keep most recent <span class="hint">tool results</span></span>
+            <input type="number" id="h_keep" min="0"></label>
+        </div>
+        <div class="sub"></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <span style="font-size:12.5px;font-weight:550">Hooks <span class="hint">· Python: before_tool, after_tool, on_event</span></span>
+          <button type="button" class="ghost" id="hooksExampleBtn">Insert example</button>
+        </div>
+        <textarea class="code" id="h_hooks" rows="6" spellcheck="false" placeholder="# optional: def before_tool(call): ..."></textarea>
+      </div>
     </div>
   </section>
 
@@ -226,6 +269,7 @@ const el = (tag, attrs = {}, ...kids) => {
   return n;
 };
 
+let APPROVAL = new Set();
 let META, CONFIG, SAVED_NAME = null, SESSION = null, SESSION_KEY = null, BUSY = false;
 
 // ---------- theme ----------
@@ -264,6 +308,18 @@ function fillForm(cfg) {
   $("#f_maxtok").value = cfg.provider.max_tokens;
   for (const cb of document.querySelectorAll("#builtinTools input")) cb.checked = cfg.tools.includes(cb.value);
   $("#customTools").replaceChildren(...cfg.custom_tools.map(customToolCard));
+  const h = cfg.harness;
+  $("#h_timeout").value = h.tool_timeout;
+  $("#h_budget").value = h.token_budget ?? "";
+  $("#h_retries").value = h.api_retries;
+  $("#h_log").checked = !!h.log_dir;
+  $("#h_clear").checked = h.clear_tool_results;
+  $("#h_trigger").value = h.clear_trigger_tokens;
+  $("#h_keep").value = h.keep_tool_results;
+  $("#h_hooks").value = h.hooks_code;
+  APPROVAL = new Set(h.require_approval);
+  renderApprovalChips();
+  $("#clearOpts").style.display = h.clear_tool_results ? "" : "none";
   onProviderChange(false);
   renderAgentList();
 }
@@ -295,6 +351,17 @@ function readForm() {
     custom_tools: custom,
     max_turns: +$("#f_turns").value || 25,
     workspace: CONFIG?.workspace || "./workspace",
+    harness: {
+      require_approval: [...APPROVAL],
+      tool_timeout: +$("#h_timeout").value || 120,
+      token_budget: +$("#h_budget").value || null,
+      api_retries: $("#h_retries").value === "" ? 2 : +$("#h_retries").value,
+      log_dir: $("#h_log").checked ? (CONFIG?.harness?.log_dir || "./logs") : null,
+      clear_tool_results: $("#h_clear").checked,
+      clear_trigger_tokens: +$("#h_trigger").value || 100000,
+      keep_tool_results: $("#h_keep").value === "" ? 3 : +$("#h_keep").value,
+      hooks_code: $("#h_hooks").value,
+    },
   };
 }
 
@@ -311,7 +378,7 @@ function customToolCard(t = {}) {
   const card = el("div", { class: "ctool" },
     el("div", { class: "ctool-head" },
       el("b", {}, "Custom tool"),
-      el("button", { type: "button", class: "ghost", onclick: () => card.remove() }, "Remove")),
+      el("button", { type: "button", class: "ghost", onclick: () => { card.remove(); renderApprovalChips(); } }, "Remove")),
     el("div", { class: "row" },
       el("label", { class: "field" }, el("span", {}, "Name"), el("input", { type: "text", class: "ct-name", spellcheck: "false" })),
       el("label", { class: "field" }, el("span", {}, "Description"), el("input", { type: "text", class: "ct-desc" }))),
@@ -324,7 +391,28 @@ function customToolCard(t = {}) {
   card.querySelector(".ct-code").value = t.code || "def run(args):\n    return args['text'].upper()\n";
   return card;
 }
-$("#addToolBtn").onclick = () => $("#customTools").append(customToolCard());
+$("#addToolBtn").onclick = () => { $("#customTools").append(customToolCard()); renderApprovalChips(); };
+
+// ---------- harness ----------
+function toolNames() {
+  const builtin = [...document.querySelectorAll("#builtinTools input:checked")].map((c) => c.value);
+  const custom = [...document.querySelectorAll(".ct-name")].map((i) => i.value.trim()).filter(Boolean);
+  return [...builtin, ...custom];
+}
+function renderApprovalChips() {
+  const names = ["*", ...toolNames()];
+  for (const n of APPROVAL) if (!names.includes(n)) names.push(n);
+  $("#approvalChips").replaceChildren(...names.map((n) => {
+    const cb = el("input", { type: "checkbox" });
+    cb.checked = APPROVAL.has(n);
+    cb.onchange = () => { cb.checked ? APPROVAL.add(n) : APPROVAL.delete(n); };
+    return el("label", { title: n === "*" ? "Every tool" : n }, cb, n === "*" ? "all tools" : n);
+  }));
+}
+$("#builtinTools").addEventListener("change", renderApprovalChips);
+$("#customTools").addEventListener("change", renderApprovalChips);
+$("#h_clear").onchange = () => $("#clearOpts").style.display = $("#h_clear").checked ? "" : "none";
+$("#hooksExampleBtn").onclick = () => { $("#h_hooks").value = META.hooks_example; };
 
 // ---------- agents ----------
 async function renderAgentList() {
@@ -386,7 +474,7 @@ async function ensureSession() {
   const restarted = SESSION !== null;
   SESSION = res.session_id; SESSION_KEY = key;
   $("#sessionInfo").textContent = `${cfg.provider.model} · workspace: ${res.workspace}`;
-  $("#sessionInfo").title = res.workspace;
+  $("#sessionInfo").title = res.workspace + (res.log_path ? `\nlog: ${res.log_path}` : "");
   if (restarted) log.append(el("div", { class: "notice" }, "Config changed. Started a new session."));
 }
 
@@ -435,6 +523,24 @@ $("#composer").onsubmit = async (e) => {
       const c = calls[ev.id]; if (!c) return;
       c.dot.className = "dot " + (ev.is_error ? "err" : "ok");
       c.d.querySelector(".body").append(el("div", { class: "meta" }, ev.is_error ? "Error" : "Output"), el("pre", {}, ev.output));
+    } else if (ev.type === "approval_request") {
+      curType = null;
+      const status = el("span", { class: "grow" }, el("span", {}, "Allow "), el("b", {}, ev.name), el("span", {}, "?"));
+      const answer = async (approve) => {
+        box.querySelectorAll("button").forEach((b) => b.disabled = true);
+        try { await api(`/api/sessions/${SESSION}/approvals/${encodeURIComponent(ev.id)}`, { method: "POST", body: JSON.stringify({ approve }) }); }
+        catch (err) { status.append(el("span", { class: "hint" }, ` (${err.message})`)); }
+      };
+      const box = el("div", { class: "approval", "data-call": ev.id }, status,
+        el("button", { type: "button", class: "primary", onclick: () => answer(true) }, "Approve"),
+        el("button", { type: "button", onclick: () => answer(false) }, "Deny"));
+      bot.append(box);
+    } else if (ev.type === "approval_result") {
+      const box = bot.querySelector(`.approval[data-call="${CSS.escape(ev.id)}"]`);
+      if (box) {
+        box.querySelectorAll("button").forEach((b) => b.remove());
+        box.append(el("span", { class: "hint" }, ev.approved ? "✓ approved" : "✗ denied"));
+      }
     } else if (ev.type === "usage") {
       for (const k in usage) usage[k] += ev[k] || 0;
     } else if (ev.type === "error") {
@@ -485,7 +591,9 @@ function summarize(input) {
   $("#templates").replaceChildren(...META.templates.map((t) =>
     el("button", { class: "tpl", onclick: () => {
       SAVED_NAME = null;
-      fillForm({ ...META.defaults, ...structuredClone(t.config), provider: { ...META.defaults.provider } });
+      const c = structuredClone(t.config);
+      fillForm({ ...META.defaults, ...c, provider: { ...META.defaults.provider },
+                 harness: { ...META.defaults.harness, ...(c.harness || {}) } });
       status(`New agent from "${t.label}" template`);
     } }, t.label)));
   fillForm(META.defaults);

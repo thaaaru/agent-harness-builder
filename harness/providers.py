@@ -9,7 +9,7 @@ lost in translation, e.g. Claude's thinking blocks) and exposes the same three c
 
 stream_turn yields UI events ({"type": "text" | "thinking" | "usage", ...}) and ends
 with exactly one {"type": "turn_end", "tool_calls": [...], "error": str | None}.
-To add a provider, implement this interface and register it in PROVIDERS.
+To add a provider, subclass Provider, implement these three calls and register it in PROVIDERS.
 """
 
 from __future__ import annotations
@@ -18,17 +18,20 @@ import json
 import os
 from typing import AsyncIterator
 
-from .config import ProviderConfig
+from .config import HarnessConfig, ProviderConfig
 from .tools import Tool
 
 # Models that accept the server-side `fallbacks: "default"` parameter.
 FALLBACK_MODELS = {"claude-fable-5-1", "claude-opus-5-5", "claude-opus-5", "claude-sonnet-5-5"}
 FALLBACK_BETA = "server-side-fallback-2026-07-01"
+CONTEXT_EDITING_BETA = "context-management-2025-06-27"
+CLEARED = "[cleared to save context]"
 
 
 class Provider:
-    def __init__(self, cfg: ProviderConfig):
+    def __init__(self, cfg: ProviderConfig, harness: HarnessConfig | None = None):
         self.cfg = cfg
+        self.harness = harness or HarnessConfig()
         self.messages: list[dict] = []
 
     def _api_key(self) -> str | None:
@@ -44,11 +47,11 @@ class Provider:
 
 
 class AnthropicProvider(Provider):
-    def __init__(self, cfg: ProviderConfig):
-        super().__init__(cfg)
+    def __init__(self, cfg: ProviderConfig, harness: HarnessConfig | None = None):
+        super().__init__(cfg, harness)
         import anthropic
         self._anthropic = anthropic
-        kwargs = {}
+        kwargs: dict = {"max_retries": self.harness.api_retries}
         if key := self._api_key():
             kwargs["api_key"] = key
         if cfg.base_url:
@@ -91,9 +94,24 @@ class AnthropicProvider(Provider):
             params["thinking"] = {"type": "adaptive", "display": "summarized"}
         if self.cfg.effort:
             params["output_config"] = {"effort": self.cfg.effort}
+        extra_body: dict = {}
+        betas: list[str] = []
         if self.cfg.refusal_fallback and model in FALLBACK_MODELS:
-            params["extra_body"] = {"fallbacks": "default"}
-            params["extra_headers"] = {"anthropic-beta": FALLBACK_BETA}
+            extra_body["fallbacks"] = "default"
+            betas.append(FALLBACK_BETA)
+        if self.harness.clear_tool_results:
+            # Server-side context editing: never rewrite past messages client-side, because
+            # replayed thinking blocks are only valid against the exact history that produced them.
+            extra_body["context_management"] = {"edits": [{
+                "type": "clear_tool_uses_20250919",
+                "trigger": {"type": "input_tokens", "value": self.harness.clear_trigger_tokens},
+                "keep": {"type": "tool_uses", "value": self.harness.keep_tool_results},
+            }]}
+            betas.append(CONTEXT_EDITING_BETA)
+        if extra_body:
+            params["extra_body"] = extra_body
+        if betas:
+            params["extra_headers"] = {"anthropic-beta": ",".join(betas)}
         return params
 
     async def stream_turn(self, system: str, tools: list[Tool]) -> AsyncIterator[dict]:
@@ -148,13 +166,28 @@ class AnthropicProvider(Provider):
 class OpenAICompatibleProvider(Provider):
     """OpenAI Chat Completions API: OpenAI, Ollama, LM Studio, vLLM, OpenRouter, Groq, ..."""
 
-    def __init__(self, cfg: ProviderConfig):
-        super().__init__(cfg)
+    def __init__(self, cfg: ProviderConfig, harness: HarnessConfig | None = None):
+        super().__init__(cfg, harness)
         import openai
         self._openai = openai
         # Local servers usually ignore the key but the SDK requires one.
         key = self._api_key() or os.environ.get("OPENAI_API_KEY") or "not-needed"
-        self.client = openai.AsyncOpenAI(api_key=key, base_url=cfg.base_url or None)
+        self.client = openai.AsyncOpenAI(api_key=key, base_url=cfg.base_url or None,
+                                         max_retries=self.harness.api_retries)
+
+    def _context_view(self) -> list[dict]:
+        """History as sent: old tool results blanked once the context is large.
+
+        The stored history is never modified, so the view is a pure function of it."""
+        h = self.harness
+        if not h.clear_tool_results:
+            return self.messages
+        approx_tokens = sum(len(json.dumps(m, default=str)) for m in self.messages) // 4
+        if approx_tokens < h.clear_trigger_tokens:
+            return self.messages
+        tool_idx = [i for i, m in enumerate(self.messages) if m["role"] == "tool"]
+        clear = set(tool_idx[:-h.keep_tool_results] if h.keep_tool_results else tool_idx)
+        return [{**m, "content": CLEARED} if i in clear else m for i, m in enumerate(self.messages)]
 
     def add_user(self, text: str) -> None:
         self.messages.append({"role": "user", "content": text})
@@ -167,7 +200,7 @@ class OpenAICompatibleProvider(Provider):
     async def stream_turn(self, system: str, tools: list[Tool]) -> AsyncIterator[dict]:
         params: dict = {
             "model": self.cfg.model,
-            "messages": ([{"role": "system", "content": system}] if system else []) + self.messages,
+            "messages": ([{"role": "system", "content": system}] if system else []) + self._context_view(),
             "stream": True,
         }
         if tools:
@@ -238,5 +271,5 @@ PROVIDERS: dict[str, type[Provider]] = {
 }
 
 
-def make_provider(cfg: ProviderConfig) -> Provider:
-    return PROVIDERS[cfg.type](cfg)
+def make_provider(cfg: ProviderConfig, harness: HarnessConfig | None = None) -> Provider:
+    return PROVIDERS[cfg.type](cfg, harness)

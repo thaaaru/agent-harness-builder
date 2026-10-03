@@ -1,4 +1,8 @@
-"""Terminal runner for an agent config: `python run.py` or `python run.py -p "task"`."""
+"""Terminal runner for an agent config.
+
+    harness-run agent.json              interactive chat
+    harness-run agent.json -p "task"    one-shot; exit code 1 on error
+"""
 
 from __future__ import annotations
 
@@ -35,6 +39,8 @@ async def _run_one(agent: Agent, text: str, show_thinking: bool) -> bool:
             colour = RED if ev["is_error"] else DIM
             preview = ev["output"].strip().replace("\n", " ")[:200]
             print(f"{colour}  ← {preview}{RESET}")
+        elif t == "approval_result" and not ev["approved"]:
+            print(f"{RED}  ✗ denied{RESET}")
         elif t == "error":
             print(f"\n{RED}error: {ev['message']}{RESET}")
             ok = False
@@ -42,15 +48,30 @@ async def _run_one(agent: Agent, text: str, show_thinking: bool) -> bool:
     return ok
 
 
+async def _ask(call: dict) -> bool:
+    prompt = f"{CYAN}  Allow {call['name']}? [y/N] {RESET}"
+    try:
+        answer = await asyncio.to_thread(input, prompt)
+    except EOFError:
+        return False
+    return answer.strip().lower() in ("y", "yes")
+
+
+async def _always_yes(call: dict) -> bool:
+    return True
+
+
 def main(config_path: str = "agent.json") -> None:
     ap = argparse.ArgumentParser(description="Run an agent built with Agent Harness Builder")
-    ap.add_argument("-c", "--config", default=config_path)
+    ap.add_argument("config", nargs="?", default=config_path, help="Path to agent.json")
     ap.add_argument("-p", "--prompt", help="Run a single task and exit")
+    ap.add_argument("-y", "--yes", action="store_true", help="Approve every tool call without asking")
     ap.add_argument("--thinking", action="store_true", help="Show the model's thinking")
     args = ap.parse_args()
 
     cfg_path = Path(args.config).resolve()
-    agent = Agent(AgentConfig.load(cfg_path), base_dir=cfg_path.parent)
+    agent = Agent(AgentConfig.load(cfg_path), base_dir=cfg_path.parent,
+                  approver=_always_yes if args.yes else _ask)
     print(f"{CYAN}{agent.config.name}{RESET} · {agent.config.provider.model} · "
           f"tools: {', '.join(t.name for t in agent.tools) or 'none'}")
 

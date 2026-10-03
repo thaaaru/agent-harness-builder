@@ -41,6 +41,27 @@ class CustomTool(BaseModel):
         return v
 
 
+class HarnessConfig(BaseModel):
+    """How the loop behaves, independent of which model or tools are used."""
+
+    # Tool names that need a human "yes" before running; "*" means every tool.
+    require_approval: list[str] = Field(default_factory=list)
+    # Seconds before a running tool is abandoned and reported as an error.
+    tool_timeout: int = Field(default=120, ge=1, le=3600)
+    # Stop after this many input+output tokens for one user message. None = no limit.
+    token_budget: int | None = Field(default=None, ge=1000)
+    # Clear old tool results once the context grows past clear_trigger_tokens.
+    clear_tool_results: bool = False
+    clear_trigger_tokens: int = Field(default=100_000, ge=1000)
+    keep_tool_results: int = Field(default=3, ge=0)
+    # Directory (relative to the agent) for JSONL transcripts. None = no logging.
+    log_dir: str | None = None
+    # Times the SDK retries rate limits, 5xx and connection errors.
+    api_retries: int = Field(default=2, ge=0, le=10)
+    # Python source defining any of: on_event(event), before_tool(call), after_tool(call, result).
+    hooks_code: str = ""
+
+
 class AgentConfig(BaseModel):
     name: str = "my-agent"
     description: str = ""
@@ -49,6 +70,7 @@ class AgentConfig(BaseModel):
     tools: list[str] = Field(default_factory=list)
     custom_tools: list[CustomTool] = Field(default_factory=list)
     max_turns: int = Field(default=25, ge=1, le=500)
+    harness: HarnessConfig = Field(default_factory=HarnessConfig)
     # Directory that file and shell tools are confined to.
     workspace: str = "./workspace"
 
