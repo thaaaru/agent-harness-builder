@@ -1,0 +1,495 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent Harness Builder</title>
+<style>
+:root {
+  --bg: #f6f5f2; --panel: #ffffff; --panel-2: #f0eee9; --border: #e2dfd8;
+  --text: #1f1e1c; --muted: #6b6860; --accent: #c4643c; --accent-text: #fff;
+  --ok: #2f7d4f; --err: #b3372f; --code: #f3f1ec; --shadow: 0 1px 2px rgba(0,0,0,.05);
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #171615; --panel: #201f1d; --panel-2: #2a2826; --border: #383532;
+  --text: #ece9e3; --muted: #9c978e; --accent: #e07a4f; --accent-text: #1a1817;
+  --ok: #6cc08b; --err: #ef7d73; --code: #1b1a19; --shadow: none;
+}}
+:root[data-theme="dark"] {
+  --bg: #171615; --panel: #201f1d; --panel-2: #2a2826; --border: #383532;
+  --text: #ece9e3; --muted: #9c978e; --accent: #e07a4f; --accent-text: #1a1817;
+  --ok: #6cc08b; --err: #ef7d73; --code: #1b1a19; --shadow: none;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { background: var(--bg); color: var(--text); font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+header { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--panel); }
+header h1 { font-size: 15px; margin: 0; font-weight: 650; letter-spacing: -.01em; }
+header .logo { width: 22px; height: 22px; border-radius: 6px; background: var(--accent); display: grid; place-items: center; color: var(--accent-text); font-weight: 700; font-size: 12px; }
+header .spacer { flex: 1; }
+main { display: grid; grid-template-columns: 220px minmax(380px, 1fr) minmax(380px, 1.1fr); height: calc(100% - 49px); }
+section { overflow: auto; border-right: 1px solid var(--border); }
+section:last-child { border-right: none; }
+.pad { padding: 16px; }
+h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 10px; font-weight: 600; }
+h3 { font-size: 13px; margin: 0 0 8px; }
+button, select, input, textarea { font: inherit; color: inherit; }
+button { border: 1px solid var(--border); background: var(--panel); border-radius: 7px; padding: 6px 12px; cursor: pointer; }
+button:hover { background: var(--panel-2); }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
+button.primary:hover { filter: brightness(1.05); }
+button.ghost { border-color: transparent; background: transparent; color: var(--muted); padding: 4px 8px; }
+button.ghost:hover { color: var(--text); background: var(--panel-2); }
+button:disabled { opacity: .5; cursor: default; }
+input[type=text], input[type=number], select, textarea {
+  width: 100%; border: 1px solid var(--border); background: var(--panel); border-radius: 7px; padding: 7px 9px;
+}
+textarea { resize: vertical; min-height: 70px; }
+textarea.code { font-family: var(--mono); font-size: 12.5px; background: var(--code); }
+input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent); outline-offset: -1px; border-color: var(--accent); }
+label.field { display: block; margin-bottom: 12px; }
+label.field > span { display: block; font-size: 12.5px; font-weight: 550; margin-bottom: 4px; }
+.hint { color: var(--muted); font-size: 12px; font-weight: 400; }
+.row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-bottom: 14px; box-shadow: var(--shadow); }
+
+/* sidebar */
+#agentList { list-style: none; padding: 0; margin: 0 0 12px; }
+#agentList li { padding: 7px 10px; border-radius: 7px; cursor: pointer; display: flex; flex-direction: column; }
+#agentList li:hover { background: var(--panel-2); }
+#agentList li.active { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+#agentList li small { color: var(--muted); font-size: 11.5px; }
+.empty { color: var(--muted); font-size: 13px; padding: 4px 10px; }
+.tpl { display: block; width: 100%; text-align: left; margin-bottom: 6px; }
+
+/* tool picker */
+.toolgrid { display: grid; gap: 6px; }
+.tool { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; }
+.tool:hover { background: var(--panel-2); }
+.tool input { margin-top: 3px; accent-color: var(--accent); }
+.tool b { font-family: var(--mono); font-size: 12.5px; font-weight: 600; }
+.tool div { font-size: 12.5px; color: var(--muted); }
+.ctool { border: 1px dashed var(--border); border-radius: 8px; padding: 10px; margin-bottom: 10px; }
+.ctool-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+
+.toolbar { display: flex; gap: 8px; align-items: center; position: sticky; top: 0; background: var(--bg); padding: 12px 16px; border-bottom: 1px solid var(--border); z-index: 2; }
+.toolbar .status { color: var(--muted); font-size: 12.5px; margin-left: auto; }
+.status.err { color: var(--err); }
+.status.ok { color: var(--ok); }
+
+/* chat */
+#chatPane { display: flex; flex-direction: column; overflow: hidden; }
+#chatHead { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+#chatHead .info { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+#log { flex: 1; overflow: auto; padding: 16px; }
+.msg { margin-bottom: 16px; max-width: 100%; }
+.msg.user { display: flex; justify-content: flex-end; }
+.msg.user .bubble { background: var(--panel-2); border-radius: 12px; padding: 8px 12px; white-space: pre-wrap; max-width: 85%; }
+.msg.bot .text { white-space: pre-wrap; word-wrap: break-word; }
+details.think, details.call { border: 1px solid var(--border); border-radius: 8px; margin: 6px 0; background: var(--panel); }
+details > summary { cursor: pointer; padding: 6px 10px; font-size: 12.5px; color: var(--muted); list-style: none; display: flex; align-items: center; gap: 8px; }
+details > summary::before { content: "▸"; font-size: 10px; transition: transform .15s; }
+details[open] > summary::before { transform: rotate(90deg); }
+details.think .body { padding: 0 10px 8px; color: var(--muted); font-size: 13px; white-space: pre-wrap; font-style: italic; }
+details.call summary b { font-family: var(--mono); color: var(--text); font-weight: 600; }
+details.call .body { padding: 0 10px 8px; }
+pre { background: var(--code); border-radius: 6px; padding: 8px; margin: 4px 0; overflow: auto; font: 12px/1.45 var(--mono); max-height: 260px; white-space: pre-wrap; word-break: break-all; }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); display: inline-block; }
+.dot.run { background: var(--accent); animation: pulse 1s infinite; }
+.dot.ok { background: var(--ok); } .dot.err { background: var(--err); }
+@keyframes pulse { 50% { opacity: .3; } }
+.meta { color: var(--muted); font-size: 11.5px; margin-top: 4px; }
+.errbox { color: var(--err); border: 1px solid color-mix(in srgb, var(--err) 40%, transparent); background: color-mix(in srgb, var(--err) 8%, transparent); border-radius: 8px; padding: 8px 10px; margin: 6px 0; font-size: 13px; }
+.notice { text-align: center; color: var(--muted); font-size: 12px; margin: 8px 0 16px; }
+#composer { display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--border); background: var(--panel); }
+#composer textarea { min-height: 42px; max-height: 160px; }
+.welcome { color: var(--muted); text-align: center; margin-top: 18vh; padding: 0 20px; }
+.welcome b { color: var(--text); display: block; font-size: 15px; margin-bottom: 4px; }
+
+@media (max-width: 1050px) {
+  main { grid-template-columns: 1fr; height: auto; }
+  section { border-right: none; border-bottom: 1px solid var(--border); }
+  #chatPane { height: 85vh; }
+  .row { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">AH</div>
+  <h1>Agent Harness Builder</h1>
+  <div class="spacer"></div>
+  <button class="ghost" id="themeBtn" title="Toggle theme">◐</button>
+</header>
+<main>
+  <section class="pad" id="sidebar">
+    <h2>Saved agents</h2>
+    <ul id="agentList"></ul>
+    <h2 style="margin-top:18px">New from template</h2>
+    <div id="templates"></div>
+  </section>
+
+  <section id="builder">
+    <div class="toolbar">
+      <button class="primary" id="saveBtn">Save</button>
+      <button id="exportBtn">Export .zip</button>
+      <button class="ghost" id="jsonBtn">View JSON</button>
+      <button class="ghost" id="deleteBtn">Delete</button>
+      <span class="status" id="status"></span>
+    </div>
+    <div class="pad">
+      <div class="card">
+        <h3>Identity</h3>
+        <label class="field"><span>Name <span class="hint">lowercase, digits, - or _</span></span>
+          <input type="text" id="f_name" spellcheck="false"></label>
+        <label class="field"><span>Description</span><input type="text" id="f_description"></label>
+        <label class="field" style="margin:0"><span>System prompt</span>
+          <textarea id="f_system" rows="6"></textarea></label>
+      </div>
+
+      <div class="card">
+        <h3>Model</h3>
+        <div class="row">
+          <label class="field"><span>Provider</span>
+            <select id="f_ptype">
+              <option value="anthropic">Anthropic (Claude)</option>
+              <option value="openai">OpenAI-compatible</option>
+            </select></label>
+          <label class="field"><span>Model</span>
+            <input type="text" id="f_model" list="modelList" spellcheck="false"><datalist id="modelList"></datalist></label>
+        </div>
+        <div class="row openai-only">
+          <label class="field"><span>Base URL <span class="hint">blank = api.openai.com</span></span>
+            <input type="text" id="f_baseurl" placeholder="http://localhost:11434/v1" spellcheck="false"></label>
+          <label class="field"><span>API key env var <span class="hint">optional</span></span>
+            <input type="text" id="f_keyenv" placeholder="OPENAI_API_KEY" spellcheck="false"></label>
+        </div>
+        <div class="row anthropic-only">
+          <label class="field"><span>Effort</span>
+            <select id="f_effort">
+              <option value="">Model default</option><option>low</option><option>medium</option>
+              <option>high</option><option>xhigh</option><option>max</option>
+            </select></label>
+          <label class="field"><span>API key env var <span class="hint">blank = SDK default</span></span>
+            <input type="text" id="f_keyenv_a" placeholder="ANTHROPIC_API_KEY" spellcheck="false"></label>
+        </div>
+        <div class="row">
+          <label class="field"><span>Max turns <span class="hint">tool-use iterations per message</span></span>
+            <input type="number" id="f_turns" min="1" max="500"></label>
+          <label class="field"><span>Max output tokens</span>
+            <input type="number" id="f_maxtok" min="256" max="128000" step="256"></label>
+        </div>
+        <label class="anthropic-only" style="display:flex;gap:8px;align-items:center;font-size:13px">
+          <input type="checkbox" id="f_fallback" style="accent-color:var(--accent)">
+          Refusal fallback <span class="hint">· re-run declined requests on Anthropic's recommended model</span>
+        </label>
+      </div>
+
+      <div class="card">
+        <h3>Built-in tools</h3>
+        <p class="hint" style="margin:-4px 0 10px">File and shell tools are confined to the agent's workspace folder. <b>bash</b> is not sandboxed.</p>
+        <div class="toolgrid" id="builtinTools"></div>
+      </div>
+
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <h3 style="margin:0">Custom tools</h3>
+          <button id="addToolBtn">+ Add tool</button>
+        </div>
+        <p class="hint" style="margin:0 0 10px">Write a Python function <code>run(args)</code> that returns a string. <code>args</code> follows your JSON schema.</p>
+        <div id="customTools"></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="chatPane">
+    <div id="chatHead">
+      <h2 style="margin:0">Playground</h2>
+      <span class="info" id="sessionInfo">No session yet</span>
+      <button class="ghost" id="resetBtn">New chat</button>
+    </div>
+    <div id="log"><div class="welcome"><b>Test your agent here</b>Messages run against the current form, including unsaved changes. Changing the config starts a fresh session.</div></div>
+    <form id="composer">
+      <textarea id="input" placeholder="Message your agent…  (Enter to send, Shift+Enter for newline)"></textarea>
+      <button class="primary" id="sendBtn" type="submit">Send</button>
+    </form>
+  </section>
+</main>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const el = (tag, attrs = {}, ...kids) => {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) k === "class" ? n.className = v : k.startsWith("on") ? n.addEventListener(k.slice(2), v) : n.setAttribute(k, v);
+  for (const k of kids) n.append(k);
+  return n;
+};
+
+let META, CONFIG, SAVED_NAME = null, SESSION = null, SESSION_KEY = null, BUSY = false;
+
+// ---------- theme ----------
+try { const t = localStorage.getItem("ahb-theme"); if (t) document.documentElement.dataset.theme = t; } catch {}
+$("#themeBtn").onclick = () => {
+  const dark = getComputedStyle(document.documentElement).getPropertyValue("--bg").trim() === "#171615";
+  document.documentElement.dataset.theme = dark ? "light" : "dark";
+  try { localStorage.setItem("ahb-theme", document.documentElement.dataset.theme); } catch {}
+};
+
+function status(msg, kind = "") { const s = $("#status"); s.textContent = msg; s.className = "status " + kind; }
+
+async function api(path, opts = {}) {
+  const res = await fetch(path, { headers: { "Content-Type": "application/json" }, ...opts });
+  if (!res.ok) {
+    let detail = res.statusText;
+    try { detail = (await res.json()).detail || detail; } catch {}
+    throw new Error(detail);
+  }
+  return res;
+}
+
+// ---------- form <-> config ----------
+function fillForm(cfg) {
+  CONFIG = structuredClone(cfg);
+  $("#f_name").value = cfg.name;
+  $("#f_description").value = cfg.description;
+  $("#f_system").value = cfg.system_prompt;
+  $("#f_ptype").value = cfg.provider.type;
+  $("#f_model").value = cfg.provider.model;
+  $("#f_baseurl").value = cfg.provider.base_url || "";
+  $("#f_keyenv").value = $("#f_keyenv_a").value = cfg.provider.api_key_env || "";
+  $("#f_effort").value = cfg.provider.effort || "";
+  $("#f_fallback").checked = cfg.provider.refusal_fallback;
+  $("#f_turns").value = cfg.max_turns;
+  $("#f_maxtok").value = cfg.provider.max_tokens;
+  for (const cb of document.querySelectorAll("#builtinTools input")) cb.checked = cfg.tools.includes(cb.value);
+  $("#customTools").replaceChildren(...cfg.custom_tools.map(customToolCard));
+  onProviderChange(false);
+  renderAgentList();
+}
+
+function readForm() {
+  const type = $("#f_ptype").value;
+  const keyEnv = (type === "openai" ? $("#f_keyenv") : $("#f_keyenv_a")).value.trim();
+  const custom = [...document.querySelectorAll(".ctool")].map((c) => {
+    const raw = c.querySelector(".ct-params").value.trim();
+    let parameters;
+    try { parameters = raw ? JSON.parse(raw) : { type: "object", properties: {} }; }
+    catch { throw new Error(`Custom tool "${c.querySelector(".ct-name").value}": parameters is not valid JSON`); }
+    return { name: c.querySelector(".ct-name").value.trim(), description: c.querySelector(".ct-desc").value.trim(),
+             parameters, code: c.querySelector(".ct-code").value };
+  });
+  return {
+    name: $("#f_name").value.trim(),
+    description: $("#f_description").value.trim(),
+    system_prompt: $("#f_system").value,
+    provider: {
+      type, model: $("#f_model").value.trim(),
+      base_url: type === "openai" ? ($("#f_baseurl").value.trim() || null) : null,
+      api_key_env: keyEnv || null,
+      effort: type === "anthropic" ? ($("#f_effort").value || null) : null,
+      refusal_fallback: $("#f_fallback").checked,
+      max_tokens: +$("#f_maxtok").value || 64000,
+    },
+    tools: [...document.querySelectorAll("#builtinTools input:checked")].map((c) => c.value),
+    custom_tools: custom,
+    max_turns: +$("#f_turns").value || 25,
+    workspace: CONFIG?.workspace || "./workspace",
+  };
+}
+
+function onProviderChange(resetModel = true) {
+  const type = $("#f_ptype").value;
+  document.querySelectorAll(".openai-only").forEach((n) => n.style.display = type === "openai" ? "" : "none");
+  document.querySelectorAll(".anthropic-only").forEach((n) => n.style.display = type === "anthropic" ? "" : "none");
+  $("#modelList").replaceChildren(...META.models[type].map((m) => el("option", { value: m })));
+  if (resetModel) $("#f_model").value = META.models[type][0];
+}
+$("#f_ptype").onchange = () => onProviderChange(true);
+
+function customToolCard(t = {}) {
+  const card = el("div", { class: "ctool" },
+    el("div", { class: "ctool-head" },
+      el("b", {}, "Custom tool"),
+      el("button", { type: "button", class: "ghost", onclick: () => card.remove() }, "Remove")),
+    el("div", { class: "row" },
+      el("label", { class: "field" }, el("span", {}, "Name"), el("input", { type: "text", class: "ct-name", spellcheck: "false" })),
+      el("label", { class: "field" }, el("span", {}, "Description"), el("input", { type: "text", class: "ct-desc" }))),
+    el("label", { class: "field" }, el("span", {}, "Parameters (JSON schema)"), el("textarea", { class: "code ct-params", rows: "5", spellcheck: "false" })),
+    el("label", { class: "field", style: "margin:0" }, el("span", {}, "Python code"), el("textarea", { class: "code ct-code", rows: "8", spellcheck: "false" })));
+  card.querySelector(".ct-name").value = t.name || "";
+  card.querySelector(".ct-desc").value = t.description || "";
+  card.querySelector(".ct-params").value = JSON.stringify(t.parameters || {
+    type: "object", properties: { text: { type: "string", description: "Input text" } }, required: ["text"] }, null, 2);
+  card.querySelector(".ct-code").value = t.code || "def run(args):\n    return args['text'].upper()\n";
+  return card;
+}
+$("#addToolBtn").onclick = () => $("#customTools").append(customToolCard());
+
+// ---------- agents ----------
+async function renderAgentList() {
+  const agents = await (await api("/api/agents")).json();
+  const list = $("#agentList");
+  if (!agents.length) return list.replaceChildren(el("li", { class: "empty" }, "None yet. Save one!"));
+  list.replaceChildren(...agents.map((a) => el("li", {
+      class: a.name === SAVED_NAME ? "active" : "",
+      onclick: async () => {
+        const cfg = await (await api(`/api/agents/${a.name}`)).json();
+        SAVED_NAME = a.name; fillForm(cfg); status("");
+      } }, a.name, el("small", {}, a.model))));
+}
+
+$("#saveBtn").onclick = async () => {
+  try {
+    const cfg = readForm();
+    await api(`/api/agents/${encodeURIComponent(cfg.name)}`, { method: "PUT", body: JSON.stringify(cfg) });
+    SAVED_NAME = cfg.name; CONFIG = cfg; renderAgentList();
+    status("Saved " + new Date().toLocaleTimeString(), "ok");
+  } catch (e) { status(e.message, "err"); }
+};
+
+$("#deleteBtn").onclick = async () => {
+  if (!SAVED_NAME) return status("Not saved yet", "err");
+  await api(`/api/agents/${SAVED_NAME}`, { method: "DELETE" });
+  status(`Deleted ${SAVED_NAME}`, "ok"); SAVED_NAME = null; fillForm(META.defaults);
+};
+
+$("#exportBtn").onclick = async () => {
+  try {
+    const cfg = readForm();
+    const blob = await (await api("/api/export", { method: "POST", body: JSON.stringify(cfg) })).blob();
+    const a = el("a", { href: URL.createObjectURL(blob), download: `${cfg.name}.zip` });
+    a.click(); URL.revokeObjectURL(a.href);
+    status(`Exported ${cfg.name}.zip`, "ok");
+  } catch (e) { status(e.message, "err"); }
+};
+
+$("#jsonBtn").onclick = () => {
+  try {
+    const log = $("#log");
+    log.querySelector(".welcome")?.remove();
+    log.append(el("div", { class: "msg bot" }, el("div", { class: "meta" }, "agent.json (current form)"),
+      el("pre", {}, JSON.stringify(readForm(), null, 2))));
+    log.scrollTop = log.scrollHeight;
+  } catch (e) { status(e.message, "err"); }
+};
+
+// ---------- chat ----------
+const log = $("#log");
+function scroll() { if (log.scrollHeight - log.scrollTop - log.clientHeight < 200) log.scrollTop = log.scrollHeight; }
+
+async function ensureSession() {
+  const cfg = readForm();
+  const key = JSON.stringify(cfg);
+  if (SESSION && key === SESSION_KEY) return;
+  const res = await (await api("/api/sessions", { method: "POST", body: JSON.stringify(cfg) })).json();
+  const restarted = SESSION !== null;
+  SESSION = res.session_id; SESSION_KEY = key;
+  $("#sessionInfo").textContent = `${cfg.provider.model} · workspace: ${res.workspace}`;
+  $("#sessionInfo").title = res.workspace;
+  if (restarted) log.append(el("div", { class: "notice" }, "Config changed. Started a new session."));
+}
+
+$("#resetBtn").onclick = () => { SESSION = null; log.replaceChildren(); $("#sessionInfo").textContent = "No session yet"; };
+
+$("#input").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); $("#composer").requestSubmit(); }
+});
+
+$("#composer").onsubmit = async (e) => {
+  e.preventDefault();
+  const text = $("#input").value.trim();
+  if (!text || BUSY) return;
+  log.querySelector(".welcome")?.remove();
+  try { await ensureSession(); }
+  catch (err) { log.append(el("div", { class: "errbox" }, err.message)); return; }
+
+  BUSY = true; $("#sendBtn").disabled = true; $("#input").value = "";
+  log.append(el("div", { class: "msg user" }, el("div", { class: "bubble" }, text)));
+  const bot = el("div", { class: "msg bot" });
+  log.append(bot); scroll();
+
+  let cur = null, curType = null;
+  const calls = {};
+  const usage = { input_tokens: 0, output_tokens: 0, cache_read_tokens: 0 };
+  const t0 = performance.now();
+
+  const handle = (ev) => {
+    if (ev.type === "text" || ev.type === "thinking") {
+      if (curType !== ev.type) {
+        if (ev.type === "thinking") {
+          const d = el("details", { class: "think" }, el("summary", {}, "Thinking"), el("div", { class: "body" }));
+          bot.append(d); cur = d.querySelector(".body");
+        } else { cur = el("div", { class: "text" }); bot.append(cur); }
+        curType = ev.type;
+      }
+      cur.textContent += ev.text;
+    } else if (ev.type === "tool_call") {
+      curType = null;
+      const dot = el("span", { class: "dot run" });
+      const d = el("details", { class: "call" },
+        el("summary", {}, dot, el("b", {}, ev.name), el("span", {}, summarize(ev.input))),
+        el("div", { class: "body" }, el("div", { class: "meta" }, "Input"), el("pre", {}, JSON.stringify(ev.input, null, 2))));
+      calls[ev.id] = { d, dot }; bot.append(d);
+    } else if (ev.type === "tool_result") {
+      const c = calls[ev.id]; if (!c) return;
+      c.dot.className = "dot " + (ev.is_error ? "err" : "ok");
+      c.d.querySelector(".body").append(el("div", { class: "meta" }, ev.is_error ? "Error" : "Output"), el("pre", {}, ev.output));
+    } else if (ev.type === "usage") {
+      for (const k in usage) usage[k] += ev[k] || 0;
+    } else if (ev.type === "error") {
+      bot.append(el("div", { class: "errbox" }, ev.message)); curType = null;
+    }
+    scroll();
+  };
+
+  try {
+    const res = await api(`/api/sessions/${SESSION}/messages`, { method: "POST", body: JSON.stringify({ text }) });
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = "";
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let i;
+      while ((i = buf.indexOf("\n\n")) >= 0) {
+        const line = buf.slice(0, i); buf = buf.slice(i + 2);
+        if (line.startsWith("data: ")) handle(JSON.parse(line.slice(6)));
+      }
+    }
+  } catch (err) {
+    handle({ type: "error", message: err.message });
+    if (/session expired/.test(err.message)) SESSION = null;
+  }
+  const secs = ((performance.now() - t0) / 1000).toFixed(1);
+  const tok = usage.input_tokens || usage.output_tokens
+    ? ` · ${usage.input_tokens.toLocaleString()} in / ${usage.output_tokens.toLocaleString()} out` +
+      (usage.cache_read_tokens ? ` · ${usage.cache_read_tokens.toLocaleString()} cached` : "") : "";
+  bot.append(el("div", { class: "meta" }, `${secs}s${tok}`));
+  scroll();
+  BUSY = false; $("#sendBtn").disabled = false; $("#input").focus();
+};
+
+function summarize(input) {
+  const s = Object.values(input || {}).map((v) => typeof v === "string" ? v : JSON.stringify(v)).join(" · ");
+  return s.length > 70 ? s.slice(0, 70) + "…" : s;
+}
+
+// ---------- boot ----------
+(async () => {
+  META = await (await api("/api/meta")).json();
+  $("#builtinTools").replaceChildren(...META.builtin_tools.map((t) =>
+    el("label", { class: "tool" }, el("input", { type: "checkbox", value: t.name }),
+      el("span", {}, el("b", {}, t.name), el("div", {}, t.description)))));
+  $("#templates").replaceChildren(...META.templates.map((t) =>
+    el("button", { class: "tpl", onclick: () => {
+      SAVED_NAME = null;
+      fillForm({ ...META.defaults, ...structuredClone(t.config), provider: { ...META.defaults.provider } });
+      status(`New agent from "${t.label}" template`);
+    } }, t.label)));
+  fillForm(META.defaults);
+})();
+</script>
+</body>
+</html>
