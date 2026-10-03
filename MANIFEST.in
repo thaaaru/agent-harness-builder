@@ -1,3 +1,3 @@
 include CHANGELOG.md
 recursive-include tests *.py
-recursive-include docs *.md *.png
+recursive-include docs *.md
